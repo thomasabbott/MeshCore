@@ -1,5 +1,10 @@
 #include "EnvironmentSensorManager.h"
 
+// Auto-detect RP2040 architecture and enable internal temp sensor
+#ifdef ARDUINO_ARCH_RP2040
+  #define ENV_INCLUDE_RP2040_TEMP 1
+#endif
+
 #if ENV_PIN_SDA && ENV_PIN_SCL
 #define TELEM_WIRE &Wire1  // Use Wire1 as the I2C bus for Environment Sensors
 #else
@@ -323,6 +328,12 @@ bool EnvironmentSensorManager::begin() {
   }
   #endif
 
+  #if ENV_INCLUDE_RP2040_TEMP
+    // The RP2040 internal sensor is always present
+    RP2040_TEMP_initialized = true;
+    MESH_DEBUG_PRINTLN("Enabled RP2040 Internal Temperature Sensor");
+  #endif
+
   return true;
 }
 
@@ -470,6 +481,33 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
         telemetry.addTemperature(TELEM_CHANNEL_SELF, BMP085.readTemperature());
         telemetry.addBarometricPressure(TELEM_CHANNEL_SELF, BMP085.readPressure() / 100);
         telemetry.addAltitude(TELEM_CHANNEL_SELF, BMP085.readAltitude(TELEM_BMP085_SEALEVELPRESSURE_HPA * 100));
+    }
+    #endif
+
+    #if ENV_INCLUDE_RP2040_TEMP
+    if (RP2040_TEMP_initialized) {
+      // 1. Force 12-bit resolution for accurate calculation (standard for RP2040)
+      analogReadResolution(12);
+      
+      // 2. Read the internal temperature sensor (ADC channel 4 on RP2040)
+      // We take a small average to reduce noise
+      uint32_t raw_sum = 0;
+      for (int i=0; i<10; i++) {
+         raw_sum += analogRead(4); 
+         delay(1);
+      }
+      float raw_avg = raw_sum / 10.0f;
+
+      // 3. Convert to Voltage (assuming 3.3V reference)
+      // 4096 is 2^12 (12-bit resolution)
+      float voltage = raw_avg * 3.3f / 4096.0f;
+
+      // 4. Convert to Celsius using RP2040 Datasheet formula:
+      // T = 27 - (ADC_Voltage - 0.706) / 0.001721
+      float tempC = 27.0f - (voltage - 0.706f) / 0.001721f;
+
+      telemetry.addTemperature(next_available_channel, tempC);
+      next_available_channel++;
     }
     #endif
 
