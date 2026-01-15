@@ -5,25 +5,13 @@
 #include <RTClib.h>
 #include <helpers/RefCountedDigitalPin.h>
 
-#ifndef GPS_EN
-    #ifdef PIN_GPS_EN
-        #define GPS_EN PIN_GPS_EN
-    #else
-        #define GPS_EN (-1)
-    #endif
-#endif
 
-#ifndef PIN_GPS_EN_ACTIVE
-    #define PIN_GPS_EN_ACTIVE HIGH
-#endif
+#define PIN_GPS_EN 47
+#define GPS_EN 47
+#define PIN_GPS_EN_ACTIVE LOW
+#define GPS_RESET (-1)
+#define PIN_GPS_RESET (-1)
 
-#ifndef GPS_RESET
-    #ifdef PIN_GPS_RESET
-        #define GPS_RESET PIN_GPS_RESET
-    #else
-        #define GPS_RESET (-1)
-    #endif
-#endif
 
 #ifndef GPS_RESET_FORCE
     #ifdef PIN_GPS_RESET_ACTIVE
@@ -32,6 +20,10 @@
         #define GPS_RESET_FORCE LOW
     #endif
 #endif
+
+
+
+
 
 class MicroNMEALocationProvider : public LocationProvider {
     char _nmeaBuffer[100];
@@ -44,7 +36,22 @@ class MicroNMEALocationProvider : public LocationProvider {
     long next_check = 0;
     long time_valid = 0;
 
+
 public :
+    MicroNMEALocationProvider(Stream& ser, mesh::RTCClock* clock = NULL, int pin_reset = GPS_RESET, int pin_en = GPS_EN, RefCountedDigitalPin* peripher_power=NULL) :
+    _gps_serial(&ser), nmea(_nmeaBuffer, sizeof(_nmeaBuffer)), _pin_reset(pin_reset), _pin_en(pin_en), _clock(clock), _peripher_power(peripher_power) {
+        MESH_DEBUG_PRINTLN("GPS: created NMEAlocationprovider. pin_en is",pin_en);
+
+        if (_pin_reset != -1) {
+            pinMode(_pin_reset, OUTPUT);
+            digitalWrite(_pin_reset, GPS_RESET_FORCE);
+        }
+        if (_pin_en != -1) {
+            pinMode(_pin_en, OUTPUT);
+            digitalWrite(_pin_en, HIGH); 
+        }
+    }
+/* before
     MicroNMEALocationProvider(Stream& ser, mesh::RTCClock* clock = NULL, int pin_reset = GPS_RESET, int pin_en = GPS_EN,RefCountedDigitalPin* peripher_power=NULL) :
     _gps_serial(&ser), nmea(_nmeaBuffer, sizeof(_nmeaBuffer)), _pin_reset(pin_reset), _pin_en(pin_en), _clock(clock), _peripher_power(peripher_power) {
         if (_pin_reset != -1) {
@@ -56,11 +63,13 @@ public :
             digitalWrite(_pin_en, LOW);
         }
     }
+*/
 
     void begin() override {
+        MESH_DEBUG_PRINTLN("GPS: begin called");
         if (_peripher_power) _peripher_power->claim();
         if (_pin_en != -1) {
-            digitalWrite(_pin_en, PIN_GPS_EN_ACTIVE);
+            digitalWrite(_pin_en, LOW);
         }
         if (_pin_reset != -1) {
             digitalWrite(_pin_reset, !GPS_RESET_FORCE);
@@ -68,6 +77,7 @@ public :
     }
 
     void reset() override {
+        MESH_DEBUG_PRINTLN("GPS: reset called");
         if (_pin_reset != -1) {
             digitalWrite(_pin_reset, GPS_RESET_FORCE);
             delay(10);
@@ -76,17 +86,25 @@ public :
     }
 
     void stop() override {
+        MESH_DEBUG_PRINTLN("GPS: stop called");
+        if (_pin_en != -1) {
+            digitalWrite(_pin_en, HIGH);
+        }
+        if (_peripher_power) _peripher_power->release();  
+    }
+    /*
+    void stop() override {
         if (_pin_en != -1) {
             digitalWrite(_pin_en, !PIN_GPS_EN_ACTIVE);
         }
         if (_peripher_power) _peripher_power->release();  
-    }
+    } */
 
     bool isEnabled() override {
         // directly read the enable pin if present as gps can be
         // activated/deactivated outside of here ...
         if (_pin_en != -1) {
-            return digitalRead(_pin_en) == PIN_GPS_EN_ACTIVE;
+            return digitalRead(_pin_en) == LOW;
         } else {
             return true; // no enable so must be active
         }

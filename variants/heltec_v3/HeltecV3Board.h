@@ -1,5 +1,12 @@
 #pragma once
 
+#undef HAS_GPS
+#define HAS_GPS 1
+#undef ENV_INCLUDE_GPS
+#define ENV_INCLUDE_GPS 1
+#define PIN_GPS_EN_ACTIVE LOW
+#define GPS_EN_ACTIVE LOW
+
 #include <Arduino.h>
 #include <helpers/RefCountedDigitalPin.h>
 #include <helpers/ESP32Board.h>
@@ -11,8 +18,18 @@
 #ifndef PIN_ADC_CTRL              // set in platformio.ini for Heltec Wireless Tracker (2)
   #define  PIN_ADC_CTRL    37
 #endif
+
 #define  PIN_ADC_CTRL_ACTIVE    LOW
 #define  PIN_ADC_CTRL_INACTIVE  HIGH
+
+
+#define HAS_GPS 1
+#define ENV_INCLUDE_GPS 1
+#define PIN_GPS_RX 48
+#define PIN_GPS_TX 26
+#define PIN_GPS_EN 47
+#define GPS_EN 47
+#define PIN_GPS_EN_ACTIVE LOW
 
 #include <driver/rtc_io.h>
 

@@ -27,6 +27,37 @@ bool radio_init() {
   //passing NULL skips init of SPI
   return radio.std_init(NULL);
 }
+ 
+ /*  Gemini modification
+
+bool radio_init() {
+  rtc_clock.begin(Wire);
+
+  // Configure SPI1 for the HAT
+  SPI1.setSCK(P_LORA_SCLK);
+  SPI1.setTX(P_LORA_MOSI);
+  SPI1.setRX(P_LORA_MISO);
+
+  pinMode(P_LORA_NSS, OUTPUT);
+  digitalWrite(P_LORA_NSS, HIGH);
+
+  SPI1.begin(false);
+
+  // Initialize the radio
+  // passing NULL skips init of SPI (we did it above manually)
+  bool success = radio.std_init(NULL);
+
+  // --- CRITICAL FIX FOR WAVESHARE HAT ---
+  // Force the radio to control the Antenna Switch on GP22.
+  // 22 = RX Enable (High during RX, Low during TX)
+  // -1 = TX Enable (Not used, logic is inverted from RX)
+  radio.setRfSwitchPins(22, -1);
+  // --------------------------------------
+
+  return success;
+}
+ end of original before Gemini  */ 
+
 
 uint32_t radio_get_rng_seed() {
   return radio.random(0x7FFFFFFF);
