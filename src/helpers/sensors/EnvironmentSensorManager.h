@@ -27,7 +27,7 @@ protected:
   bool BME680_initialized = false;
   bool BMP085_initialized = false;
   bool RP2040_TEMP_initialized = false;
-
+  bool Solar_initialized = false;
   bool gps_detected = false;
   bool gps_active = false;
 

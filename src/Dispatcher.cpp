@@ -39,7 +39,7 @@ uint32_t Dispatcher::getCADFailMaxDuration() const {
   return 4000;   // 4 seconds
 }
 
-void Dispatcher::loop() {
+/* void Dispatcher::loop() {
   if (millisHasNowPassed(next_floor_calib_time)) {
     _radio->triggerNoiseFloorCalibrate(getInterferenceThreshold());
     next_floor_calib_time = futureMillis(NOISE_FLOOR_CALIB_INTERVAL);
@@ -106,6 +106,89 @@ void Dispatcher::loop() {
   }
   checkRecv();
   checkSend();
+} */
+
+void Dispatcher::loop() {
+  if (millisHasNowPassed(next_floor_calib_time)) {
+    _radio->triggerNoiseFloorCalibrate(getInterferenceThreshold());
+    next_floor_calib_time = futureMillis(NOISE_FLOOR_CALIB_INTERVAL);
+  }
+  _radio->loop();
+
+  // check for radio 'stuck' in mode other than Rx
+  bool is_recv = _radio->isInRecvMode();
+  if (is_recv != prev_isrecv_mode) {
+    prev_isrecv_mode = is_recv;
+    if (!is_recv) {
+      radio_nonrx_start = _ms->getMillis();
+    }
+  }
+  if (!is_recv && _ms->getMillis() - radio_nonrx_start > 8000) {   // radio has not been in Rx mode for 8 seconds!
+    _err_flags |= ERR_EVENT_STARTRX_TIMEOUT;
+  }
+
+  if (outbound) {  // waiting for outbound send to be completed
+    if (_radio->isSendComplete()) {
+      long t = _ms->getMillis() - outbound_start;
+      total_air_time += t;  // keep track of how much air time we are using
+      //Serial.print("  airtime="); Serial.println(t);
+
+      // will need radio silence up to next_tx_time
+      next_tx_time = futureMillis(t * getAirtimeBudgetFactor());
+
+      _radio->onSendFinished();
+      logTx(outbound, 2 + outbound->path_len + outbound->payload_len);
+      if (outbound->isRouteFlood()) {
+        n_sent_flood++;
+      } else {
+        n_sent_direct++;
+      }
+      releasePacket(outbound);  // return to pool
+      outbound = NULL;
+    } else if (millisHasNowPassed(outbound_expiry)) {
+      MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): WARNING: outbound packed send timed out!", getLogDateTime());
+
+      _radio->onSendFinished();
+      logTxFail(outbound, 2 + outbound->path_len + outbound->payload_len);
+
+      releasePacket(outbound);  // return to pool
+      outbound = NULL;
+    } else {
+      // NOTE: We do NOT return here anymore, so we can reach the sleep instruction at the bottom
+      // return; 
+    }
+
+    // going back into receive mode now...
+    next_agc_reset_time = futureMillis(getAGCResetInterval());
+  }
+
+  // Only check other tasks if we are NOT currently waiting on a Blocking Send
+  if (!outbound) {
+    if (getAGCResetInterval() > 0 && millisHasNowPassed(next_agc_reset_time)) {
+      _radio->resetAGC();
+      next_agc_reset_time = futureMillis(getAGCResetInterval());
+    }
+
+    // check inbound (delayed) queue
+    {
+      Packet* pkt = _mgr->getNextInbound(_ms->getMillis());
+      if (pkt) {
+        processRecvPacket(pkt);
+      }
+    }
+    checkRecv();
+    checkSend();
+  }
+
+  // --- POWER SAVING ---
+  // If running on the RP2040, pause the CPU core until the next interrupt fires.
+  // Interrupts include:
+  // 1. SysTick (fires every 1ms to update millis())
+  // 2. Radio DIO1 (if you attached an interrupt pin in setup)
+  // 3. USB/Serial interrupts
+  #if defined(ARDUINO_ARCH_RP2040) || defined(RP2040)
+    __asm volatile ("wfi");
+  #endif
 }
 
 void Dispatcher::checkRecv() {

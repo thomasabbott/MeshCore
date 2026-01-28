@@ -494,6 +494,41 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
     }
     #endif
 
+// --- NEW SOLAR SENSOR BLOCK ---
+    #if defined(P_ISOLAR_READ) && defined(SOLAR_SHUNT_OHMS)
+    if (Solar_initialized) {
+      analogReadResolution(12); // Ensure 12-bit resolution
+
+      uint32_t raw_sum = 0;
+      const int samples = 64; // High oversampling to stabilize small signal
+      
+      for(int i = 0; i < samples; i++) {
+        raw_sum += analogRead(P_ISOLAR_READ);
+      }
+      
+      float raw_avg = raw_sum / (float)samples;
+
+      // Calculate Voltage sensed (Reference is 3.3V)
+      // V_sense = (raw_avg / 4096.0) * 3.3;
+      
+      // Calculate Current (I = V / R)
+      // I_amps = V_sense / SOLAR_SHUNT_OHMS;
+      
+      // Combined Formula:
+      float current_amps = (raw_avg * 3.3) / (4096.0 * SOLAR_SHUNT_OHMS);
+      telemetry.addAnalogInput(next_available_channel, current_amps * 1000.0);      
+
+      next_available_channel++;
+    }
+    #endif
+
+
+    #if defined(P_ISOLAR_READ)
+    pinMode(P_ISOLAR_READ, INPUT);
+    Solar_initialized = true;
+    MESH_DEBUG_PRINTLN("Enabled Solar Current Sensor on Pin %d", P_ISOLAR_READ);
+    #endif
+
   }
 
   return true;
