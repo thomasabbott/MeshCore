@@ -153,6 +153,142 @@ public:
 static RAK12500LocationProvider RAK12500_provider;
 #endif
 
+// --------------------------------------------------------------------------
+// HELPER FUNCTIONS (Solar, Battery, Temperature)
+// --------------------------------------------------------------------------
+#ifdef ENABLE_SOLAR_STATS
+
+// Helper: Get Temp from first available sensor
+float EnvironmentSensorManager::getPrimaryTemperature() {
+  #if ENV_INCLUDE_RP2040_TEMP
+    if (RP2040_TEMP_initialized) return analogReadTemp();
+  #endif
+  #if ENV_INCLUDE_BME280
+    if (BME280_initialized) return BME280.readTemperature();
+  #endif
+  #if ENV_INCLUDE_BMP280
+    if (BMP280_initialized) return BMP280.readTemperature();
+  #endif
+  // Add other sensors here as needed
+  return -273.0; // Error
+}
+
+// Helper: Read Battery (Re-using logic/constants from platformio.ini)
+float EnvironmentSensorManager::readBatteryVoltage() {
+  #if defined(P_VBAT_READ) && defined(ADC_MULTIPLIER)
+    analogReadResolution(12);
+    uint32_t raw = analogRead(P_VBAT_READ);
+    // ADC_MULTIPLIER is usually calibrated for mV (e.g. 9900)
+    // Formula: (raw * Multiplier) / 4096 = mV
+    return ((float)raw * ADC_MULTIPLIER / 4096.0) / 1000.0; // Return Volts
+  #else
+    return 0.0;
+  #endif
+}
+
+// NEW: Robust Statistical Solar Reader
+float EnvironmentSensorManager::readSolarCurrentStatistical() {
+  #if defined(P_ISOLAR_READ) && defined(SOLAR_SHUNT_OHMS) && defined(SOLAR_SAMPLES) && defined(SOLAR_CURRENT_OFFSET_MA)
+    analogReadResolution(12);
+
+    // Stack-allocated buffers
+    uint16_t sig_buffer[SOLAR_SAMPLES];
+    uint16_t ref_buffer[SOLAR_SAMPLES];
+    int16_t  diff_buffer[SOLAR_SAMPLES];
+
+    // 1. CAPTURE PHASE
+    uint32_t raw_sig_sum = 0;
+    uint32_t raw_ref_sum = 0;
+    int32_t  raw_diff_sum = 0;
+
+    for (int i = 0; i < SOLAR_SAMPLES; i++) {
+      uint16_t s = analogRead(P_ISOLAR_READ);
+      #ifdef P_ISOLAR_GND_REF
+        uint16_t r = analogRead(P_ISOLAR_GND_REF);
+      #else
+        uint16_t r = 0;
+      #endif
+      
+      int16_t d = (int16_t)s - (int16_t)r;
+
+      sig_buffer[i] = s;
+      ref_buffer[i] = r;
+      diff_buffer[i] = d;
+
+      raw_sig_sum += s;
+      raw_ref_sum += r;
+      raw_diff_sum += d;
+    }
+
+    // 2. STATISTICS PHASE (Calculate Variances)
+    float sig_mean  = raw_sig_sum / (float)SOLAR_SAMPLES;
+    float ref_mean  = raw_ref_sum / (float)SOLAR_SAMPLES;
+    float diff_mean = raw_diff_sum / (float)SOLAR_SAMPLES;
+
+    float sig_var_sum = 0;
+    float ref_var_sum = 0;
+    float diff_var_sum = 0;
+
+    for (int i = 0; i < SOLAR_SAMPLES; i++) {
+        float d_s = sig_buffer[i] - sig_mean;
+        float d_r = ref_buffer[i] - ref_mean;
+        float d_d = diff_buffer[i] - diff_mean;
+        sig_var_sum  += (d_s * d_s);
+        ref_var_sum  += (d_r * d_r);
+        diff_var_sum += (d_d * d_d);
+    }
+    
+    // Calculate Thresholds (Variance * Sigma_Multiplier)
+    #ifndef SOLAR_SIGMA_SQ
+      #define SOLAR_SIGMA_SQ 3.0
+    #endif
+
+    float sig_cutoff_sq  = (sig_var_sum / SOLAR_SAMPLES) * SOLAR_SIGMA_SQ;
+    float ref_cutoff_sq  = (ref_var_sum / SOLAR_SAMPLES) * SOLAR_SIGMA_SQ;
+    float diff_cutoff_sq = (diff_var_sum / SOLAR_SAMPLES) * SOLAR_SIGMA_SQ;
+
+    // 3. FILTER PHASE
+    float filtered_diff_sum = 0;
+    int valid_samples = 0;
+
+    for (int i = 0; i < SOLAR_SAMPLES; i++) {
+        float d_s = sig_buffer[i] - sig_mean;
+        float d_r = ref_buffer[i] - ref_mean;
+        float d_d = diff_buffer[i] - diff_mean;
+
+        // Reject if ANY of the three metrics deviate too much
+        if ((d_s * d_s) > sig_cutoff_sq) continue;
+        if ((d_r * d_r) > ref_cutoff_sq) continue;
+        if ((d_d * d_d) > diff_cutoff_sq) continue;
+
+        filtered_diff_sum += diff_buffer[i];
+        valid_samples++;
+    }
+
+    // Fallback if filtering was too aggressive
+    if (valid_samples == 0) {
+        filtered_diff_sum = raw_diff_sum; 
+        valid_samples = SOLAR_SAMPLES; 
+    }
+
+    // 4. CONVERSION
+    float final_diff_avg = filtered_diff_sum / (float)valid_samples;
+    if (final_diff_avg < 0) final_diff_avg = 0;
+
+    // Volts = (ADC / 4095) * 3.3
+    // Amps  = Volts / Shunt
+    float volts = (final_diff_avg * 3.3f) / 4095.0f;
+    float ma = (volts / SOLAR_SHUNT_OHMS) * 1000.0f;
+    ma = SOLAR_CURRENT_OFFSET_MA - ma;
+
+    return ma;
+  #else
+    return 0.0;
+  #endif
+}
+#endif
+
+
 bool EnvironmentSensorManager::begin() {
   #if ENV_INCLUDE_GPS
   #ifdef RAK_WISBLOCK_GPS
@@ -334,15 +470,28 @@ bool EnvironmentSensorManager::begin() {
     MESH_DEBUG_PRINTLN("Enabled RP2040 Internal Temperature Sensor");
   #endif
 
+  #if defined(P_ISOLAR_READ)
+    pinMode(P_ISOLAR_READ, INPUT);
+    #ifdef P_ISOLAR_GND_REF
+      pinMode(P_ISOLAR_GND_REF, INPUT);
+    #endif
+    Solar_initialized = true;
+    MESH_DEBUG_PRINTLN("Solar Statistical Sensor Init (Pin %d, Ref %d)", P_ISOLAR_READ, P_ISOLAR_GND_REF);
+  #endif
+
   return true;
 }
 
 bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
   next_available_channel = TELEM_CHANNEL_SELF + 1;
 
+  #if ENV_INCLUDE_GPS
   if (requester_permissions & TELEM_PERM_LOCATION && gps_active) {
-    telemetry.addGPS(TELEM_CHANNEL_SELF, node_lat, node_lon, node_altitude); // allow lat/lon via telemetry even if no GPS is detected
+     if (_location->isValid()) {
+        telemetry.addGPS(TELEM_CHANNEL_SELF, node_lat, node_lon, node_altitude); 
+     }
   }
+  #endif
 
   if (requester_permissions & TELEM_PERM_ENVIRONMENT) {
 
@@ -494,40 +643,30 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
     }
     #endif
 
-// --- NEW SOLAR SENSOR BLOCK ---
-    #if defined(P_ISOLAR_READ) && defined(SOLAR_SHUNT_OHMS)
+    // --- NEW: SOLAR & STATISTICS REPORTING ---
+    #ifdef ENABLE_SOLAR_STATS
     if (Solar_initialized) {
-      analogReadResolution(12); // Ensure 12-bit resolution
+        // Channel 50: Live Solar Current (Amps) - Cached from loop
+        telemetry.addCurrent(50, current_mA_live / 1000.0);
 
-      uint32_t raw_sum = 0;
-      const int samples = 64; // High oversampling to stabilize small signal
-      
-      for(int i = 0; i < samples; i++) {
-        raw_sum += analogRead(P_ISOLAR_READ);
-      }
-      
-      float raw_avg = raw_sum / (float)samples;
+        // Channel 51: Today's Max Current (Amps)
+        telemetry.addCurrent(51, today_max_mA / 1000.0);
 
-      // Calculate Voltage sensed (Reference is 3.3V)
-      // V_sense = (raw_avg / 4096.0) * 3.3;
-      
-      // Calculate Current (I = V / R)
-      // I_amps = V_sense / SOLAR_SHUNT_OHMS;
-      
-      // Combined Formula:
-      float current_amps = (raw_avg * 3.3) / (4096.0 * SOLAR_SHUNT_OHMS);
-      telemetry.addAnalogInput(next_available_channel, current_amps * 1000.0);      
+        // Channel 52: Today's Total mAh (AnalogInput)
+        telemetry.addAnalogInput(52, accumulated_mAs / 3600.0);
 
-      next_available_channel++;
+        // Channel 53/54: Today's Min/Max Temp
+        telemetry.addTemperature(53, today_min_temp);
+        telemetry.addTemperature(54, today_max_temp);
+
+        // --- YESTERDAY'S DATA ---
+        telemetry.addCurrent(60, yest_max_mA / 1000.0);
+        telemetry.addAnalogInput(61, yest_total_mAh);
+        telemetry.addTemperature(62, yest_min_temp);
+        telemetry.addTemperature(63, yest_max_temp);
     }
     #endif
-
-
-    #if defined(P_ISOLAR_READ)
-    pinMode(P_ISOLAR_READ, INPUT);
-    Solar_initialized = true;
-    MESH_DEBUG_PRINTLN("Enabled Solar Current Sensor on Pin %d", P_ISOLAR_READ);
-    #endif
+    // ---------------------------------
 
   }
 
@@ -550,8 +689,6 @@ const char* EnvironmentSensorManager::getSettingName(int i) const {
       return "gps";
     }
   #endif
-  // convenient way to add params (needed for some tests)
-//  if (i == settings++) return "param.2";
   return NULL;
 }
 
@@ -562,8 +699,6 @@ const char* EnvironmentSensorManager::getSettingValue(int i) const {
       return gps_active ? "1" : "0";
     }
   #endif
-  // convenient way to add params ...
-//  if (i == settings++) return "2";
   return NULL;
 }
 
@@ -738,6 +873,8 @@ void EnvironmentSensorManager::stop_gps() {
   #endif
 }
 
+#endif // ENV_INCLUDE_GPS
+
 void EnvironmentSensorManager::loop() {
   static long next_gps_update = 0;
 
@@ -746,26 +883,77 @@ void EnvironmentSensorManager::loop() {
 
   if (millis() > next_gps_update) {
     if(gps_active){
-    #ifdef RAK_WISBLOCK_GPS
-    if ((i2cGPSFlag || serialGPSFlag) && _location->isValid()) {
-      node_lat = ((double)_location->getLatitude())/1000000.;
-      node_lon = ((double)_location->getLongitude())/1000000.;
-      MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
-      node_altitude = ((double)_location->getAltitude()) / 1000.0;
-      MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
-    }
-    #else
-    if (_location->isValid()) {
-      node_lat = ((double)_location->getLatitude())/1000000.;
-      node_lon = ((double)_location->getLongitude())/1000000.;
-      MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
-      node_altitude = ((double)_location->getAltitude()) / 1000.0;
-      MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
-    }
-    #endif
+      if (_location->isValid()) {
+        node_lat = ((double)_location->getLatitude())/1000000.;
+        node_lon = ((double)_location->getLongitude())/1000000.;
+        MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
+        node_altitude = ((double)_location->getAltitude()) / 1000.0;
+        MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+      }
     }
     next_gps_update = millis() + 1000;
   }
   #endif
+  
+  // --- NEW: STATISTICS LOOP (Every 1 Second) ---
+  #ifdef ENABLE_SOLAR_STATS
+  if (millis() - last_stats_update >= 1000) {
+    float dt = (millis() - last_stats_update) / 1000.0;
+    last_stats_update = millis();
+
+    // 1. READ SOLAR CURRENT (Statistical Filter)
+    float mA = readSolarCurrentStatistical();
+    current_mA_live = mA; // Update live value for querySensors
+
+    // 2. INTEGRATION (mAh)
+    // Only integrate if |current| >= cutoff (default 2mA)
+    #if defined(SOLAR_CURRENT_CUTOFF_MA)
+      if (abs(mA) >= SOLAR_CURRENT_CUTOFF_MA) {
+         accumulated_mAs += (mA * dt);
+      }
+    #else
+      accumulated_mAs += (mA * dt);
+    #endif
+
+    // 3. TRACK PEAKS (Current)
+    if (mA > today_max_mA) today_max_mA = mA;
+
+    // 4. TRACK MIN/MAX TEMP
+    float t = getPrimaryTemperature();
+    if (t > -200) { // Valid reading check
+        if (t > today_max_temp) today_max_temp = t;
+        if (t < today_min_temp) today_min_temp = t;
+    }
+
+    // 5. MIDNIGHT CHECK (UTC-8)
+    time_t now = time(NULL);
+    if (now > 100000) { // Ensure clock is set
+        time_t local_time = now + TIMEZONE_OFFSET;
+        long current_day = local_time / 86400;
+
+        if (last_day_index == -1) {
+            last_day_index = current_day; // First run init
+        } 
+        else if (current_day > last_day_index) {
+            // !!! NEW DAY DETECTED !!!
+            MESH_DEBUG_PRINTLN("Midnight UTC-8: Rolling over stats.");
+
+            // Archive Today -> Yesterday
+            yest_max_mA = today_max_mA;
+            yest_total_mAh = accumulated_mAs / 3600.0;
+            yest_min_temp = today_min_temp;
+            yest_max_temp = today_max_temp;
+
+            // Reset Today
+            today_max_mA = 0.0;
+            accumulated_mAs = 0.0;
+            today_min_temp = t; // Reset to current
+            today_max_temp = t;
+
+            last_day_index = current_day;
+        }
+    }
+  }
+  #endif
+  // ---------------------------------------------
 }
-#endif
