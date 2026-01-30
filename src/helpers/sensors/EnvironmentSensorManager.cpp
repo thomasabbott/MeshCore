@@ -117,6 +117,12 @@ static bool serialGPSFlag = false;
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 static SFE_UBLOX_GNSS ublox_GNSS;
 
+
+// Import the global RTC object defined in target.cpp/target.h
+#include "target.h" 
+extern AutoDiscoverRTCClock rtc_clock;
+
+
 class RAK12500LocationProvider : public LocationProvider {
   long _lat = 0;
   long _lng = 0;
@@ -660,10 +666,10 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
         telemetry.addTemperature(54, today_max_temp);
 
         // --- YESTERDAY'S DATA ---
-        telemetry.addCurrent(60, yest_max_mA / 1000.0);
-        telemetry.addAnalogInput(61, yest_total_mAh);
-        telemetry.addTemperature(62, yest_min_temp);
-        telemetry.addTemperature(63, yest_max_temp);
+        telemetry.addCurrent(61, yest_max_mA / 1000.0);
+        telemetry.addAnalogInput(62, yest_total_mAh);
+        telemetry.addTemperature(63, yest_min_temp);
+        telemetry.addTemperature(64, yest_max_temp);
     }
     #endif
     // ---------------------------------
@@ -926,33 +932,39 @@ void EnvironmentSensorManager::loop() {
     }
 
     // 5. MIDNIGHT CHECK (UTC-8)
-    time_t now = time(NULL);
-    if (now > 100000) { // Ensure clock is set
-        time_t local_time = now + TIMEZONE_OFFSET;
-        long current_day = local_time / 86400;
+    // --- CHANGED: Use injected RTC Pointer ---
+    if (_rtc) {
+        uint32_t now = _rtc->getCurrentTime();
 
-        if (last_day_index == -1) {
-            last_day_index = current_day; // First run init
-        } 
-        else if (current_day > last_day_index) {
-            // !!! NEW DAY DETECTED !!!
-            MESH_DEBUG_PRINTLN("Midnight UTC-8: Rolling over stats.");
+        // Safety check: Is time valid? (e.g. > Jan 1 2020)
+        // 1577836800 = Jan 1 2020
+        if (now > 1577836800) { 
+            int64_t local_time = (int64_t)now + TIMEZONE_OFFSET;
+            long current_day = (long)(local_time / 86400);
 
-            // Archive Today -> Yesterday
-            yest_max_mA = today_max_mA;
-            yest_total_mAh = accumulated_mAs / 3600.0;
-            yest_min_temp = today_min_temp;
-            yest_max_temp = today_max_temp;
+            if (last_day_index == -1) {
+                last_day_index = current_day; 
+            } 
+            else if (current_day > last_day_index) {
+                MESH_DEBUG_PRINTLN("Midnight UTC-8: Rolling over stats. (Day %ld -> %ld)", last_day_index, current_day);
 
-            // Reset Today
-            today_max_mA = 0.0;
-            accumulated_mAs = 0.0;
-            today_min_temp = t; // Reset to current
-            today_max_temp = t;
+                // Archive Today -> Yesterday
+                yest_max_mA = today_max_mA;
+                yest_total_mAh = accumulated_mAs / 3600.0;
+                yest_min_temp = today_min_temp;
+                yest_max_temp = today_max_temp;
 
-            last_day_index = current_day;
+                // Reset Today
+                today_max_mA = 0.0;
+                accumulated_mAs = 0.0;
+                today_min_temp = t; 
+                today_max_temp = t;
+
+                last_day_index = current_day;
+            }
         }
     }
+
   }
   #endif
   // ---------------------------------------------

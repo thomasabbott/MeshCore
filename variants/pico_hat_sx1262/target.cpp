@@ -14,6 +14,7 @@ EnvironmentSensorManager sensors;
 
 bool radio_init() {
   rtc_clock.begin(Wire);
+  sensors.setRTC(rtc_clock);
 
 // --- ADD DEBUG PRINTING HERE ---
   Serial.begin(115200);

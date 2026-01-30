@@ -7,12 +7,11 @@
 #include <Mesh.h>
 #include <helpers/SensorManager.h>
 #include <helpers/sensors/LocationProvider.h>
-#include <time.h> // Include for system clock
 
 class EnvironmentSensorManager : public SensorManager {
 protected:
   int next_available_channel = TELEM_CHANNEL_SELF + 1;
-
+  mesh::RTCClock* _rtc = NULL;
   bool AHTX0_initialized = false;
   bool BME280_initialized = false;
   bool BMP280_initialized = false;
@@ -83,6 +82,8 @@ public:
   #else
   EnvironmentSensorManager(){};
   #endif
+
+  void setRTC(mesh::RTCClock& rtc) { _rtc = &rtc; }
 
   bool begin() override;
   bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
