@@ -18,6 +18,9 @@ protected:
   virtual bool isReceivingPacket() =0;
 
 public:
+// expose the underlying PhysicalLayer for TDOA test pulses
+  PhysicalLayer* getPhysicalLayer() { return _radio; } 
+
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board) : _radio(&radio), _board(&board) { n_recv = n_sent = 0; }
 
   void begin() override;
