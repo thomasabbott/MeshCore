@@ -56,6 +56,9 @@ protected:
   float yest_min_temp = 0.0;
   float yest_max_temp = 0.0;
 
+  // All-time Stats
+  double all_time_accumulated_mAs = 0.0;
+
   // Internal Helpers
   float getPrimaryTemperature();
   float readBatteryVoltage();

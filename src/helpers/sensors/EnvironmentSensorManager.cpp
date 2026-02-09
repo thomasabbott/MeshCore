@@ -670,6 +670,10 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
         telemetry.addAnalogInput(62, yest_total_mAh);
         telemetry.addTemperature(63, yest_min_temp);
         telemetry.addTemperature(64, yest_max_temp);
+
+        // --- ALL-TIME RECORDS ---
+        telemetry.addAnalogInput(72, all_time_accumulated_mAs / 3600000.0);
+
     }
     #endif
     // ---------------------------------
@@ -916,9 +920,11 @@ void EnvironmentSensorManager::loop() {
     #if defined(SOLAR_CURRENT_CUTOFF_MA)
       if (abs(mA) >= SOLAR_CURRENT_CUTOFF_MA) {
          accumulated_mAs += (mA * dt);
+         all_time_accumulated_mAs += (mA * dt);
       }
     #else
       accumulated_mAs += (mA * dt);
+      all_time_accumulated_mAs += (mA * dt);
     #endif
 
     // 3. TRACK PEAKS (Current)
