@@ -59,7 +59,7 @@ public :
         }
         if (_pin_en != -1) {
             pinMode(_pin_en, OUTPUT);
-            digitalWrite(_pin_en, LOW);
+            digitalWrite(_pin_en, !PIN_GPS_EN_ACTIVE);  // start disabled (respects active-low vs active-high)
         }
     }
 

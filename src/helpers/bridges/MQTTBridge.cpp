@@ -6,6 +6,8 @@
 
 #if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
 #include <HeltecV4Board.h>
+#elif defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V3)
+#include <HeltecV3Board.h>
 #endif
 
 #if ENV_INCLUDE_GPS
@@ -1561,6 +1563,11 @@ bool MQTTBridge::publishStatus() {
   if (_board == &board) {
     toa_enabled = 1;
   }
+#elif defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V3)
+  extern HeltecV3Board board;
+  if (_board == &board) {
+    toa_enabled = 1;
+  }
 #endif
 
   // Build status message with stats
@@ -1764,6 +1771,18 @@ void MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
 #if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
   if (!is_tx && packet->toa_capture_ticks != 0 && _board) {
     extern HeltecV4Board board;
+    if (_board == &board) {
+      uint64_t last_pps = board.toaGetLastPpsTicks();
+      int32_t delta_ticks = (int32_t)(packet->toa_capture_ticks - (uint32_t)last_pps);
+      if (delta_ticks < 0) {
+        delta_ticks += 80000000;  // 80e6 ticks per second
+      }
+      timestamp_precise_ns = (int64_t)((uint64_t)delta_ticks * 125 / 10);  // 12.5 ns per tick
+    }
+  }
+#elif defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V3)
+  if (!is_tx && packet->toa_capture_ticks != 0 && _board) {
+    extern HeltecV3Board board;
     if (_board == &board) {
       uint64_t last_pps = board.toaGetLastPpsTicks();
       int32_t delta_ticks = (int32_t)(packet->toa_capture_ticks - (uint32_t)last_pps);
@@ -2630,6 +2649,11 @@ void MQTTBridge::publishStatusToAnalyzerClient(PsychicMqttClient* client, const 
   int toa_enabled = -1;
 #if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
   extern HeltecV4Board board;
+  if (_board == &board) {
+    toa_enabled = 1;
+  }
+#elif defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V3)
+  extern HeltecV3Board board;
   if (_board == &board) {
     toa_enabled = 1;
   }

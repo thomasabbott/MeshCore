@@ -25,29 +25,7 @@ public:
 
   HeltecV3Board() : periph_power(PIN_VEXT_EN) { }
 
-  void begin() {
-    ESP32Board::begin();
-
-    // Auto-detect correct ADC_CTRL pin polarity (different for boards >3.2)
-    pinMode(PIN_ADC_CTRL, INPUT);
-    adc_active_state = !digitalRead(PIN_ADC_CTRL);
-
-    pinMode(PIN_ADC_CTRL, OUTPUT);
-    digitalWrite(PIN_ADC_CTRL, !adc_active_state); // Initially inactive
-
-    periph_power.begin();
-
-    esp_reset_reason_t reason = esp_reset_reason();
-    if (reason == ESP_RST_DEEPSLEEP) {
-      long wakeup_source = esp_sleep_get_ext1_wakeup_status();
-      if (wakeup_source & (1 << P_LORA_DIO_1)) {  // received a LoRa packet (while in deep sleep)
-        startup_reason = BD_STARTUP_RX_PACKET;
-      }
-
-      rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-      rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
-    }
-  }
+  void begin();
 
   void enterDeepSleep(uint32_t secs, int pin_wake_btn = -1) {
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
@@ -94,4 +72,14 @@ public:
   const char* getManufacturerName() const override {
     return "Heltec V3";
   }
+
+#if defined(ENABLE_PACKET_TOA)
+  /** Start TOA timer, PPS capture (CAP0) and DIO1 packet-arrival capture (CAP1). Call once from setup. */
+  void toaBegin();
+  /** Last PPS rising-edge timestamp in timer ticks (80 MHz). */
+  uint64_t toaGetLastPpsTicks() const;
+  /** Last DIO1 (packet arrival) rising-edge capture in timer ticks; 0 if none yet. */
+  uint32_t toaGetLastDio1CaptureTicks() const;
+  uint32_t getLastToaDio1CaptureTicks() const override;
+#endif
 };

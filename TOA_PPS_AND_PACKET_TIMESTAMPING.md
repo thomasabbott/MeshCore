@@ -65,4 +65,4 @@ DIO1 interrupt behaviour is unchanged: RadioLib still uses its DIO1 callback for
 
 ## Scope
 
-TOA and PPS/DIO1 capture are implemented only for the **Heltec V4** variant (`ENABLE_PACKET_TOA` + `HELTEC_LORA_V4`). Other boards and variants are unchanged.
+TOA and PPS/DIO1 capture are implemented for **Heltec V3** and **Heltec V4** (`ENABLE_PACKET_TOA` + `HELTEC_LORA_V3` or `HELTEC_LORA_V4`). Same ESP32 + SX1262 + pinout for timing; V3 uses `HeltecV3Board.cpp` with the same MCPWM logic as V4. Other boards and variants are unchanged.
