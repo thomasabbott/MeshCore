@@ -64,7 +64,8 @@ public:
     float gps_lat = NAN,
     float gps_lon = NAN,
     float gps_alt = NAN,
-    int toa_enabled = -1
+    int toa_enabled = -1,
+    float toa_clock_ppm = NAN
   );
 
   /**

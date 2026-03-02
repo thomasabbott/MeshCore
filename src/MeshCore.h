@@ -67,6 +67,9 @@ public:
 
   /** Last DIO1 (packet arrival) capture ticks for TOA; 0 if not supported. */
   virtual uint32_t getLastToaDio1CaptureTicks() const { return 0; }
+
+  /** Smoothed clock error in ppm (vs 80 MHz); 0 if not supported. Positive = clock fast. */
+  virtual float getToaClockErrorPpm() const { return 0.0f; }
 };
 
 /**

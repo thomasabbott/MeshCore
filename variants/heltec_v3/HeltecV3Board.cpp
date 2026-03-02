@@ -6,15 +6,33 @@
 #include "driver/mcpwm.h"
 
 // TOA state: updated by MCPWM capture callbacks (same 80 MHz timer for CAP0 and CAP1).
+// Clock error: PPS callback stores uint32_t interval (handles 32-bit wrap); EMA in getToaClockErrorPpm().
+#define TOA_PPS_TICKS_PER_SEC      80000000u
+#define TOA_PPS_TICKS_HALF_SEC     40000000u
+#define TOA_PPS_TICKS_ONE_HALF     120000000u
+#define TOA_PPM_EMA_OLD            0.8f
+#define TOA_PPM_EMA_NEW            0.2f
+#define TOA_PREVIOUS_NONE          0xFFFFFFFFu
+
 struct ToaState {
   volatile uint64_t last_pps_ticks;
   volatile uint32_t last_dio1_ticks;
+  volatile uint32_t previous_pps_ticks;
+  volatile uint32_t last_delta_ticks;
+  volatile uint8_t have_new_delta;
+  float smoothed_ppm;
 };
-static ToaState s_toa = {};
+static ToaState s_toa = { 0, 0, TOA_PREVIOUS_NONE, 0, 0, 0.0f };
 
 static bool IRAM_ATTR pps_capture_cb(mcpwm_unit_t, mcpwm_capture_channel_id_t,
                                      const cap_event_data_t* edata, void*) {
-  s_toa.last_pps_ticks = (uint64_t)edata->cap_value;
+  uint32_t new_val = edata->cap_value;
+  if (s_toa.previous_pps_ticks != TOA_PREVIOUS_NONE) {
+    s_toa.last_delta_ticks = new_val - s_toa.previous_pps_ticks;  // uint32_t: wrap-correct
+    s_toa.have_new_delta = 1;
+  }
+  s_toa.previous_pps_ticks = new_val;
+  s_toa.last_pps_ticks = (uint64_t)new_val;
   return false;
 }
 
@@ -111,5 +129,17 @@ uint32_t HeltecV3Board::toaGetLastDio1CaptureTicks() const {
 
 uint32_t HeltecV3Board::getLastToaDio1CaptureTicks() const {
   return toaGetLastDio1CaptureTicks();
+}
+
+float HeltecV3Board::getToaClockErrorPpm() const {
+  if (s_toa.have_new_delta) {
+    s_toa.have_new_delta = 0;
+    uint32_t d = s_toa.last_delta_ticks;
+    if (d >= TOA_PPS_TICKS_HALF_SEC && d <= TOA_PPS_TICKS_ONE_HALF) {
+      float raw_ppm = (float)((int64_t)d - (int64_t)TOA_PPS_TICKS_PER_SEC) / 80.0f;
+      s_toa.smoothed_ppm = TOA_PPM_EMA_OLD * s_toa.smoothed_ppm + TOA_PPM_EMA_NEW * raw_ppm;
+    }
+  }
+  return s_toa.smoothed_ppm;
 }
 #endif

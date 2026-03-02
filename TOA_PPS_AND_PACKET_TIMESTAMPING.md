@@ -7,8 +7,9 @@ Brief notes on the time-of-arrival (TOA) feature: GPS PPS capture, DIO1 packet-a
 - **PPS capture**: MCPWM unit 0, CAP0, captures the GPS PPS pin (rising edge) and stores the 80 MHz timer value.
 - **DIO1 capture**: Same MCPWM unit, CAP1, captures the LoRa DIO1 pin (packet-arrival rising edge). Same timer as CAP0 so PPS and packet timestamps are comparable.
 - **Packet metadata**: Each received packet gets `toa_capture_ticks` set from the last DIO1 capture. This is local metadata only (not on the wire).
-- **MQTT packets**: RX packets can include `timestamp_precise` (nanoseconds since the most recent PPS). Wrap at 1 s is handled (if delta is negative, add 80e6 ticks then convert to ns).
-- **MQTT status**: TOA stats reduced to a single flag: `toa_enabled` (no PPS/poll/debug fields).
+- **MQTT packets**: RX packets can include `timestamp_precise` (nanoseconds since the most recent PPS, **corrected for CPU clock error**). Wrap at 1 s is handled. The value is compensated using the measured clock ppm so it represents time vs the true second.
+- **Clock error (ppm)**: Successive PPS tick intervals are used to measure how much the 80 MHz timer deviates from nominal. Raw ppm = (delta_ticks - 80e6) / 80; smoothed with EMA 0.8·old + 0.2·new. Starts at 0 ppm until at least two PPS edges. Positive ppm = clock fast.
+- **MQTT status**: TOA stats: `toa_enabled` and `toa_clock_ppm` (smoothed clock error, 2 dp) for recordkeeping.
 
 DIO1 interrupt behaviour is unchanged: RadioLib still uses its DIO1 callback for packet handling. MCPWM CAP1 runs in parallel and only records the timer value.
 
@@ -21,6 +22,7 @@ DIO1 interrupt behaviour is unchanged: RadioLib still uses its DIO1 callback for
 - **`toaGetLastPpsTicks()`** – Last PPS rising-edge timestamp (80 MHz ticks).
 - **`toaGetLastDio1CaptureTicks()`** – Last DIO1 rising-edge capture; 0 if none.
 - **`getLastToaDio1CaptureTicks()`** – Override of `MainBoard`; returns same as above.
+- **`getToaClockErrorPpm()`** – Override of `MainBoard`; returns smoothed clock error in ppm (0 until two PPS edges).
 
 (Removed from this board: `toaPoll`, `toaGetPpsPolledCount`, `toaGetPpsPinLevel`, `toaGetMcpwmCapValue`, `toaDebugPrint`.)
 
@@ -42,14 +44,14 @@ DIO1 interrupt behaviour is unchanged: RadioLib still uses its DIO1 callback for
 - **`RadioLibWrapper::getLastToaCaptureTicks()`** – Override; returns `_board->getLastToaDio1CaptureTicks()`.
 
 ### `src/helpers/MQTTMessageBuilder.h` / `.cpp`
-- **`buildStatusMessage(...)`** – TOA parameter reduced to **`toa_enabled`** (removed PPS/poll/debug params).
+- **`buildStatusMessage(...)`** – TOA params: **`toa_enabled`**, **`toa_clock_ppm`** (float, omit if NAN).
 - **`buildPacketMessage(..., timestamp_precise_ns = -1)`** – When `timestamp_precise_ns >= 0`, adds **`timestamp_precise`** to the packet JSON.
 - **`buildPacketJSON(..., timestamp_precise_ns = -1)`** – Forwards `timestamp_precise_ns` to `buildPacketMessage`.
 - **`buildPacketJSONFromRaw(..., timestamp_precise_ns = -1)`** – Same.
 
 ### `src/helpers/bridges/MQTTBridge.cpp`
-- **Status**: Only passes **`toa_enabled`** into `buildStatusMessage` (both main status and analyzer status).
-- **`publishPacket()`**: For RX when TOA is enabled and board is Heltec V4, computes `timestamp_precise_ns` from `packet->toa_capture_ticks` and `board.toaGetLastPpsTicks()` (with 80e6-tick wrap), then passes it into `buildPacketJSON` / `buildPacketJSONFromRaw`.
+- **Status**: Passes **`toa_enabled`** and **`toa_clock_ppm`** (from `board.getToaClockErrorPpm()`) into `buildStatusMessage` (main and analyzer).
+- **`publishPacket()`**: For RX when TOA is enabled, computes raw `timestamp_precise_ns` from packet and last PPS ticks (with wrap), then **compensates for clock error**: `timestamp_precise_ns = raw_ns * (1 - ppm/1e6)`, and passes the corrected value into the packet JSON.
 
 ### `examples/simple_repeater/main.cpp`
 - Removed the `ENABLE_PACKET_TOA` block that called `board.toaPoll()` and `board.toaDebugPrint()`.

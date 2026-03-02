@@ -81,5 +81,7 @@ public:
   /** Last DIO1 (packet arrival) rising-edge capture in timer ticks; 0 if none yet. */
   uint32_t toaGetLastDio1CaptureTicks() const;
   uint32_t getLastToaDio1CaptureTicks() const override;
+  /** Smoothed clock error vs 80 MHz from PPS interval, in ppm (0 until at least two PPS edges). */
+  float getToaClockErrorPpm() const override;
 #endif
 };

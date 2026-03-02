@@ -1,5 +1,6 @@
 #include "MQTTMessageBuilder.h"
 #include <ArduinoJson.h>
+#include <math.h>
 #include <time.h>
 #include <Timezone.h>
 #include "MeshCore.h"
@@ -28,7 +29,8 @@ int MQTTMessageBuilder::buildStatusMessage(
   float gps_lat,
   float gps_lon,
   float gps_alt,
-  int toa_enabled
+  int toa_enabled,
+  float toa_clock_ppm
 ) {
   // Use StaticJsonDocument to avoid heap fragmentation (fixed-size stack allocation)
   StaticJsonDocument<1024> doc;  // Increased size to accommodate GPS and TOA stats
@@ -47,7 +49,7 @@ int MQTTMessageBuilder::buildStatusMessage(
   if (battery_mv >= 0 || uptime_secs >= 0 || errors >= 0 || queue_len >= 0 ||
       noise_floor > -999 || tx_air_secs >= 0 || rx_air_secs >= 0 || recv_errors >= 0 ||
       gps_enabled >= 0 || gps_sats >= 0 || !isnan(gps_lat) || !isnan(gps_lon) || !isnan(gps_alt) ||
-      toa_enabled >= 0) {
+      toa_enabled >= 0 || !isnan(toa_clock_ppm)) {
     JsonObject stats = root.createNestedObject("stats");
 
     if (battery_mv >= 0) {
@@ -94,6 +96,9 @@ int MQTTMessageBuilder::buildStatusMessage(
 
     if (toa_enabled >= 0) {
       stats["toa_enabled"] = toa_enabled;
+    }
+    if (!isnan(toa_clock_ppm)) {
+      stats["toa_clock_ppm"] = roundf(toa_clock_ppm * 100.0f) / 100.0f;  // 2 dp for recordkeeping
     }
   }
   

@@ -1558,15 +1558,18 @@ bool MQTTBridge::publishStatus() {
   
   // Collect TOA stats
   int toa_enabled = -1;
+  float toa_clock_ppm = NAN;
 #if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
   extern HeltecV4Board board;
   if (_board == &board) {
     toa_enabled = 1;
+    toa_clock_ppm = board.getToaClockErrorPpm();
   }
 #elif defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V3)
   extern HeltecV3Board board;
   if (_board == &board) {
     toa_enabled = 1;
+    toa_clock_ppm = board.getToaClockErrorPpm();
   }
 #endif
 
@@ -1595,7 +1598,8 @@ bool MQTTBridge::publishStatus() {
     gps_lat,
     gps_lon,
     gps_alt,
-    toa_enabled
+    toa_enabled,
+    toa_clock_ppm
   );
   
           if (len > 0) {
@@ -1766,33 +1770,36 @@ void MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
   strncpy(origin_id, _device_id, sizeof(origin_id) - 1);
   origin_id[sizeof(origin_id) - 1] = '\0';
 
-  // Nanoseconds since last PPS for RX packets with TOA capture (80 MHz timer, 12.5 ns/tick; wrap at 1 s)
+  // Nanoseconds since last PPS for RX packets (80 MHz timer; unsigned delta handles 32-bit wrap).
+  // Only valid when packet is within 1 s after last PPS (delta_u <= 80e6); then correct for ppm.
   int64_t timestamp_precise_ns = -1;
 #if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
   if (!is_tx && packet->toa_capture_ticks != 0 && _board) {
     extern HeltecV4Board board;
     if (_board == &board) {
-      uint64_t last_pps = board.toaGetLastPpsTicks();
-      int32_t delta_ticks = (int32_t)(packet->toa_capture_ticks - (uint32_t)last_pps);
-      if (delta_ticks < 0) {
-        delta_ticks += 80000000;  // 80e6 ticks per second
+      uint32_t last_pps = (uint32_t)board.toaGetLastPpsTicks();
+      uint32_t delta_u = (uint32_t)packet->toa_capture_ticks - last_pps;  // wrap-correct
+      if (delta_u <= 80000000u) {
+        timestamp_precise_ns = (int64_t)((uint64_t)delta_u * 125 / 10);
       }
-      timestamp_precise_ns = (int64_t)((uint64_t)delta_ticks * 125 / 10);  // 12.5 ns per tick
     }
   }
 #elif defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V3)
   if (!is_tx && packet->toa_capture_ticks != 0 && _board) {
     extern HeltecV3Board board;
     if (_board == &board) {
-      uint64_t last_pps = board.toaGetLastPpsTicks();
-      int32_t delta_ticks = (int32_t)(packet->toa_capture_ticks - (uint32_t)last_pps);
-      if (delta_ticks < 0) {
-        delta_ticks += 80000000;  // 80e6 ticks per second
+      uint32_t last_pps = (uint32_t)board.toaGetLastPpsTicks();
+      uint32_t delta_u = (uint32_t)packet->toa_capture_ticks - last_pps;  // wrap-correct
+      if (delta_u <= 80000000u) {
+        timestamp_precise_ns = (int64_t)((uint64_t)delta_u * 125 / 10);
       }
-      timestamp_precise_ns = (int64_t)((uint64_t)delta_ticks * 125 / 10);  // 12.5 ns per tick
     }
   }
 #endif
+  if (timestamp_precise_ns >= 0 && _board) {
+    float ppm = _board->getToaClockErrorPpm();
+    timestamp_precise_ns = (int64_t)((double)timestamp_precise_ns * (1.0 - (double)ppm / 1e6));
+  }
   
   // Build packet message using raw radio data if provided
   int len;
@@ -2647,15 +2654,18 @@ void MQTTBridge::publishStatusToAnalyzerClient(PsychicMqttClient* client, const 
   
   // Collect TOA stats
   int toa_enabled = -1;
+  float toa_clock_ppm = NAN;
 #if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
   extern HeltecV4Board board;
   if (_board == &board) {
     toa_enabled = 1;
+    toa_clock_ppm = board.getToaClockErrorPpm();
   }
 #elif defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V3)
   extern HeltecV3Board board;
   if (_board == &board) {
     toa_enabled = 1;
+    toa_clock_ppm = board.getToaClockErrorPpm();
   }
 #endif
 
@@ -2684,7 +2694,8 @@ void MQTTBridge::publishStatusToAnalyzerClient(PsychicMqttClient* client, const 
     gps_lat,
     gps_lon,
     gps_alt,
-    toa_enabled
+    toa_enabled,
+    toa_clock_ppm
   );
   
   if (len > 0) {
