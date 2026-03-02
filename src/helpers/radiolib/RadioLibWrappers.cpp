@@ -163,6 +163,10 @@ bool RadioLibWrapper::isChannelActive() {
           : getCurrentRSSI() > _noise_floor + _threshold;
 }
 
+uint32_t RadioLibWrapper::getLastToaCaptureTicks() const {
+  return _board->getLastToaDio1CaptureTicks();
+}
+
 float RadioLibWrapper::getLastRSSI() const {
   return _radio->getRSSI();
 }

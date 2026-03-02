@@ -58,7 +58,13 @@ public:
     int noise_floor = -999,
     int tx_air_secs = -1,
     int rx_air_secs = -1,
-    int recv_errors = -1
+    int recv_errors = -1,
+    int gps_enabled = -1,
+    int gps_sats = -1,
+    float gps_lat = NAN,
+    float gps_lon = NAN,
+    float gps_alt = NAN,
+    int toa_enabled = -1
   );
 
   /**
@@ -100,7 +106,8 @@ public:
     const char* hash,
     const char* path,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    int64_t timestamp_precise_ns = -1
   );
 
   /**
@@ -141,7 +148,8 @@ public:
     const char* origin_id,
     Timezone* timezone,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    int64_t timestamp_precise_ns = -1
   );
 
   static int buildPacketJSONFromRaw(
@@ -155,7 +163,8 @@ public:
     float rssi,
     Timezone* timezone,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    int64_t timestamp_precise_ns = -1
   );
 
   /**

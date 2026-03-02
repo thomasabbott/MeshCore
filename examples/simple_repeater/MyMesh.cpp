@@ -826,8 +826,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.bw = LORA_BW;
   _prefs.cr = LORA_CR;
   _prefs.tx_power_dbm = LORA_TX_POWER;
-  _prefs.advert_interval = 1;        // default to 2 minutes for NEW installs
-  _prefs.flood_advert_interval = 12; // 12 hours
+  _prefs.advert_interval = 10;        // default to 2 minutes for NEW installs
+  _prefs.flood_advert_interval = 48; // 12 hours
   _prefs.flood_max = 64;
   _prefs.interference_threshold = 0; // disabled
 
@@ -863,8 +863,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
         _prefs.timezone_offset = -8; // fallback
         
         // Let's Mesh Analyzer defaults (both enabled by default)
-        _prefs.mqtt_analyzer_us_enabled = 1; // enabled
-        _prefs.mqtt_analyzer_eu_enabled = 1; // enabled
+        _prefs.mqtt_analyzer_us_enabled = 0; // enabled
+        _prefs.mqtt_analyzer_eu_enabled = 0; // enabled
 }
 
 void MyMesh::begin(FILESYSTEM *fs) {
@@ -875,8 +875,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
   // Ensure analyzer servers are enabled by default (in case no prefs were loaded)
   if (_prefs.mqtt_analyzer_us_enabled == 0 && _prefs.mqtt_analyzer_eu_enabled == 0) {
-    _prefs.mqtt_analyzer_us_enabled = 1; // enabled
-    _prefs.mqtt_analyzer_eu_enabled = 1; // enabled
+    _prefs.mqtt_analyzer_us_enabled = 0; // enabled
+    _prefs.mqtt_analyzer_eu_enabled = 0; // enabled
     MESH_DEBUG_PRINTLN("Setting analyzer servers to enabled by default");
   }
   
@@ -1265,6 +1265,17 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     } else {
       strcpy(reply, "Err - ??");
     }
+#if defined(ENABLE_PACKET_TOA)
+  } else if (memcmp(command, "toa", 3) == 0) {
+    uint64_t pps_ticks = board.toaGetLastPpsTicks();
+    if (pps_ticks == 0) {
+      strcpy(reply, "no PPS received");
+    } else {
+      // Convert ticks to nanoseconds (80 MHz = 12.5 ns per tick)
+      uint64_t ns = (pps_ticks * 1000000000ULL) / 80000000ULL;
+      sprintf(reply, "PPS ticks: %llu (%llu ns)", (unsigned long long)pps_ticks, (unsigned long long)ns);
+    }
+#endif
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }

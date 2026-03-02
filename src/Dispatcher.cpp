@@ -160,6 +160,7 @@ void Dispatcher::checkRecv() {
             score = _radio->packetScore(_radio->getLastSNR(), len);
             air_time = _radio->getEstAirtimeFor(len);
             rx_air_time += air_time;
+            pkt->toa_capture_ticks = _radio->getLastToaCaptureTicks();
           }
         }
       }

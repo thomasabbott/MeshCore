@@ -428,8 +428,8 @@ set mqtt.packets on                   # Packet data messages
 set mqtt.raw off                      # Raw packet data (optional)
 set mqtt.tx off                       # Transmitted packets (optional)
 
-# Set status publish interval (default: 5 minutes)
-set mqtt.interval 300000
+# Set status publish interval (default: 1 minute)
+set mqtt.interval 60000
 
 # Verify settings
 get mqtt.server

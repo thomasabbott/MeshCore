@@ -49,6 +49,8 @@ public:
   uint8_t path[MAX_PATH_SIZE];
   uint8_t payload[MAX_PACKET_PAYLOAD];
   int8_t _snr;
+  /** MCPWM capture ticks at packet arrival (DIO1 rising); 0 if not set. Used for timestamp_precise. */
+  uint32_t toa_capture_ticks;
 
   /**
    * \brief calculate the hash of payload + type

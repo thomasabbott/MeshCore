@@ -64,6 +64,9 @@ public:
   virtual const char* getResetReasonString(uint32_t reason) { return "Not available"; }
   virtual uint8_t getShutdownReason() const { return 0; }
   virtual const char* getShutdownReasonString(uint8_t reason) { return "Not available"; }
+
+  /** Last DIO1 (packet arrival) capture ticks for TOA; 0 if not supported. */
+  virtual uint32_t getLastToaDio1CaptureTicks() const { return 0; }
 };
 
 /**

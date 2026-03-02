@@ -4,6 +4,14 @@
 #include <WiFiUdp.h>
 #include <Timezone.h>
 
+#if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
+#include <HeltecV4Board.h>
+#endif
+
+#if ENV_INCLUDE_GPS
+#include "../sensors/EnvironmentSensorManager.h"
+#endif
+
 #ifdef ESP_PLATFORM
 #include <esp_wifi.h>
 #include <esp_heap_caps.h>
@@ -1525,6 +1533,36 @@ bool MQTTBridge::publishStatus() {
     recv_errors = (int)_radio->getPacketsRecvErrors();
   }
   
+  // Collect GPS stats
+  int gps_enabled = -1;
+  int gps_sats = -1;
+  float gps_lat = NAN;
+  float gps_lon = NAN;
+  float gps_alt = NAN;
+  
+#if ENV_INCLUDE_GPS
+  extern EnvironmentSensorManager sensors;
+  LocationProvider* loc = sensors.getLocationProvider();
+  if (loc) {
+    gps_enabled = loc->isEnabled() ? 1 : 0;
+    if (loc->isValid()) {
+      gps_sats = loc->satellitesCount();
+      gps_lat = ((double)loc->getLatitude()) / 1000000.0;
+      gps_lon = ((double)loc->getLongitude()) / 1000000.0;
+      gps_alt = ((double)loc->getAltitude()) / 1000.0;
+    }
+  }
+#endif
+  
+  // Collect TOA stats
+  int toa_enabled = -1;
+#if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
+  extern HeltecV4Board board;
+  if (_board == &board) {
+    toa_enabled = 1;
+  }
+#endif
+
   // Build status message with stats
   int len = MQTTMessageBuilder::buildStatusMessage(
     _origin,
@@ -1544,7 +1582,13 @@ bool MQTTBridge::publishStatus() {
     noise_floor,
     tx_air_secs,
     rx_air_secs,
-    recv_errors
+    recv_errors,
+    gps_enabled,
+    gps_sats,
+    gps_lat,
+    gps_lon,
+    gps_alt,
+    toa_enabled
   );
   
           if (len > 0) {
@@ -1714,6 +1758,22 @@ void MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
   // Use actual device ID
   strncpy(origin_id, _device_id, sizeof(origin_id) - 1);
   origin_id[sizeof(origin_id) - 1] = '\0';
+
+  // Nanoseconds since last PPS for RX packets with TOA capture (80 MHz timer, 12.5 ns/tick; wrap at 1 s)
+  int64_t timestamp_precise_ns = -1;
+#if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
+  if (!is_tx && packet->toa_capture_ticks != 0 && _board) {
+    extern HeltecV4Board board;
+    if (_board == &board) {
+      uint64_t last_pps = board.toaGetLastPpsTicks();
+      int32_t delta_ticks = (int32_t)(packet->toa_capture_ticks - (uint32_t)last_pps);
+      if (delta_ticks < 0) {
+        delta_ticks += 80000000;  // 80e6 ticks per second
+      }
+      timestamp_precise_ns = (int64_t)((uint64_t)delta_ticks * 125 / 10);  // 12.5 ns per tick
+    }
+  }
+#endif
   
   // Build packet message using raw radio data if provided
   int len;
@@ -1721,18 +1781,21 @@ void MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
     // Use provided raw radio data
     len = MQTTMessageBuilder::buildPacketJSONFromRaw(
       raw_data, raw_len, packet, is_tx, _origin, origin_id, 
-      snr, rssi, _timezone, active_buffer, active_buffer_size
+      snr, rssi, _timezone, active_buffer, active_buffer_size,
+      timestamp_precise_ns
     );
   } else if (_last_raw_data && _last_raw_len > 0 && (millis() - _last_raw_timestamp) < 1000) {
     // Fallback to global raw radio data (within 1 second of packet)
     len = MQTTMessageBuilder::buildPacketJSONFromRaw(
       _last_raw_data, _last_raw_len, packet, is_tx, _origin, origin_id, 
-      _last_snr, _last_rssi, _timezone, active_buffer, active_buffer_size
+      _last_snr, _last_rssi, _timezone, active_buffer, active_buffer_size,
+      timestamp_precise_ns
     );
   } else {
     // Fallback to reconstructed packet data
     len = MQTTMessageBuilder::buildPacketJSON(
-      packet, is_tx, _origin, origin_id, _timezone, active_buffer, active_buffer_size
+      packet, is_tx, _origin, origin_id, _timezone, active_buffer, active_buffer_size,
+      timestamp_precise_ns
     );
   }
   
@@ -2542,6 +2605,36 @@ void MQTTBridge::publishStatusToAnalyzerClient(PsychicMqttClient* client, const 
     recv_errors = (int)_radio->getPacketsRecvErrors();
   }
   
+  // Collect GPS stats
+  int gps_enabled = -1;
+  int gps_sats = -1;
+  float gps_lat = NAN;
+  float gps_lon = NAN;
+  float gps_alt = NAN;
+  
+#if ENV_INCLUDE_GPS
+  extern EnvironmentSensorManager sensors;
+  LocationProvider* loc = sensors.getLocationProvider();
+  if (loc) {
+    gps_enabled = loc->isEnabled() ? 1 : 0;
+    if (loc->isValid()) {
+      gps_sats = loc->satellitesCount();
+      gps_lat = ((double)loc->getLatitude()) / 1000000.0;
+      gps_lon = ((double)loc->getLongitude()) / 1000000.0;
+      gps_alt = ((double)loc->getAltitude()) / 1000.0;
+    }
+  }
+#endif
+  
+  // Collect TOA stats
+  int toa_enabled = -1;
+#if defined(ENABLE_PACKET_TOA) && defined(HELTEC_LORA_V4)
+  extern HeltecV4Board board;
+  if (_board == &board) {
+    toa_enabled = 1;
+  }
+#endif
+
   // Build status message using MQTTMessageBuilder with stats
   int len = MQTTMessageBuilder::buildStatusMessage(
     _origin,
@@ -2561,7 +2654,13 @@ void MQTTBridge::publishStatusToAnalyzerClient(PsychicMqttClient* client, const 
     noise_floor,
     tx_air_secs,
     rx_air_secs,
-    recv_errors
+    recv_errors,
+    gps_enabled,
+    gps_sats,
+    gps_lat,
+    gps_lon,
+    gps_alt,
+    toa_enabled
   );
   
   if (len > 0) {

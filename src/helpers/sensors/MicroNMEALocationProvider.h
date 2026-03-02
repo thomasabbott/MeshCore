@@ -48,8 +48,14 @@ public :
     MicroNMEALocationProvider(Stream& ser, mesh::RTCClock* clock = NULL, int pin_reset = GPS_RESET, int pin_en = GPS_EN,RefCountedDigitalPin* peripher_power=NULL) :
     _gps_serial(&ser), nmea(_nmeaBuffer, sizeof(_nmeaBuffer)), _pin_reset(pin_reset), _pin_en(pin_en), _clock(clock), _peripher_power(peripher_power) {
         if (_pin_reset != -1) {
+#if defined(GPS_HOT_START)
+            // Leave reset inactive (high) so GPS keeps almanac for hot start
+            pinMode(_pin_reset, OUTPUT);
+            digitalWrite(_pin_reset, !GPS_RESET_FORCE);
+#else
             pinMode(_pin_reset, OUTPUT);
             digitalWrite(_pin_reset, GPS_RESET_FORCE);
+#endif
         }
         if (_pin_en != -1) {
             pinMode(_pin_en, OUTPUT);
@@ -62,17 +68,21 @@ public :
         if (_pin_en != -1) {
             digitalWrite(_pin_en, PIN_GPS_EN_ACTIVE);
         }
+#if !defined(GPS_HOT_START)
         if (_pin_reset != -1) {
             digitalWrite(_pin_reset, !GPS_RESET_FORCE);
         }
+#endif
     }
 
     void reset() override {
+#if !defined(GPS_HOT_START)
         if (_pin_reset != -1) {
             digitalWrite(_pin_reset, GPS_RESET_FORCE);
             delay(10);
             digitalWrite(_pin_reset, !GPS_RESET_FORCE);
         }
+#endif
     }
 
     void stop() override {

@@ -81,6 +81,9 @@ public:
    * \returns  number of receive errors (e.g. CRC failures) since last reset; 0 if not tracked.
   */
   virtual uint32_t getPacketsRecvErrors() const { return 0; }
+
+  /** Last DIO1 (packet arrival) capture ticks for TOA; 0 if not supported. */
+  virtual uint32_t getLastToaCaptureTicks() const { return 0; }
 };
 
 /**

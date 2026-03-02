@@ -22,12 +22,18 @@ int MQTTMessageBuilder::buildStatusMessage(
   int noise_floor,
   int tx_air_secs,
   int rx_air_secs,
-  int recv_errors
+  int recv_errors,
+  int gps_enabled,
+  int gps_sats,
+  float gps_lat,
+  float gps_lon,
+  float gps_alt,
+  int toa_enabled
 ) {
   // Use StaticJsonDocument to avoid heap fragmentation (fixed-size stack allocation)
-  StaticJsonDocument<768> doc;  // Increased size to accommodate stats
+  StaticJsonDocument<1024> doc;  // Increased size to accommodate GPS and TOA stats
   JsonObject root = doc.to<JsonObject>();
-  
+
   root["status"] = status;
   root["timestamp"] = timestamp;
   root["origin"] = origin;
@@ -36,12 +42,14 @@ int MQTTMessageBuilder::buildStatusMessage(
   root["firmware_version"] = firmware_version;
   root["radio"] = radio;
   root["client_version"] = client_version;
-  
+
   // Add stats object if any stats are provided
-  if (battery_mv >= 0 || uptime_secs >= 0 || errors >= 0 || queue_len >= 0 || 
-      noise_floor > -999 || tx_air_secs >= 0 || rx_air_secs >= 0 || recv_errors >= 0) {
+  if (battery_mv >= 0 || uptime_secs >= 0 || errors >= 0 || queue_len >= 0 ||
+      noise_floor > -999 || tx_air_secs >= 0 || rx_air_secs >= 0 || recv_errors >= 0 ||
+      gps_enabled >= 0 || gps_sats >= 0 || !isnan(gps_lat) || !isnan(gps_lon) || !isnan(gps_alt) ||
+      toa_enabled >= 0) {
     JsonObject stats = root.createNestedObject("stats");
-    
+
     if (battery_mv >= 0) {
       stats["battery_mv"] = battery_mv;
     }
@@ -66,6 +74,27 @@ int MQTTMessageBuilder::buildStatusMessage(
     if (recv_errors >= 0) {
       stats["recv_errors"] = recv_errors;
     }
+
+    // GPS stats
+    if (gps_enabled >= 0) {
+      stats["gps_enabled"] = gps_enabled;
+    }
+    if (gps_sats >= 0) {
+      stats["gps_sats"] = gps_sats;
+    }
+    if (!isnan(gps_lat)) {
+      stats["gps_lat"] = gps_lat;
+    }
+    if (!isnan(gps_lon)) {
+      stats["gps_lon"] = gps_lon;
+    }
+    if (!isnan(gps_alt)) {
+      stats["gps_alt"] = gps_alt;
+    }
+
+    if (toa_enabled >= 0) {
+      stats["toa_enabled"] = toa_enabled;
+    }
   }
   
   size_t len = serializeJson(root, buffer, buffer_size);
@@ -89,7 +118,8 @@ int MQTTMessageBuilder::buildPacketMessage(
   const char* hash,
   const char* path,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  int64_t timestamp_precise_ns
 ) {
   // Use StaticJsonDocument with fixed maximum size to avoid heap fragmentation
   // Base JSON overhead ~200 bytes, raw hex can be up to 510 chars (255 bytes packet)
@@ -129,7 +159,10 @@ int MQTTMessageBuilder::buildPacketMessage(
   if (path && strlen(path) > 0) {
     root["path"] = path;
   }
-  
+  if (timestamp_precise_ns >= 0) {
+    root["timestamp_precise"] = (int64_t)timestamp_precise_ns;
+  }
+
   size_t json_len = serializeJson(root, buffer, buffer_size);
   return (json_len > 0 && json_len < buffer_size) ? json_len : 0;
 }
@@ -163,7 +196,8 @@ int MQTTMessageBuilder::buildPacketJSON(
   const char* origin_id,
   Timezone* timezone,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  int64_t timestamp_precise_ns
 ) {
   if (!packet) return 0;
   
@@ -230,7 +264,8 @@ int MQTTMessageBuilder::buildPacketJSON(
     -65,   // RSSI - using reasonable default
     hash_str,
     packet->isRouteDirect() ? path_str : nullptr,
-    buffer, buffer_size
+    buffer, buffer_size,
+    timestamp_precise_ns
   );
 }
 
@@ -245,7 +280,8 @@ int MQTTMessageBuilder::buildPacketJSONFromRaw(
   float rssi,
   Timezone* timezone,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  int64_t timestamp_precise_ns
 ) {
   if (!packet || !raw_data || raw_len <= 0) return 0;
   
@@ -312,7 +348,8 @@ int MQTTMessageBuilder::buildPacketJSONFromRaw(
     rssi, // Use actual RSSI from radio
     hash_str,
     packet->isRouteDirect() ? path_str : nullptr,
-    buffer, buffer_size
+    buffer, buffer_size,
+    timestamp_precise_ns
   );
 }
 

@@ -8,6 +8,7 @@ Packet::Packet() {
   header = 0;
   path_len = 0;
   payload_len = 0;
+  toa_capture_ticks = 0;
 }
 
 int Packet::getRawLength() const {

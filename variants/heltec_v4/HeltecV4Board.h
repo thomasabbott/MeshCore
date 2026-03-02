@@ -20,4 +20,14 @@ public:
   uint16_t getBattMilliVolts() override;
   const char* getManufacturerName() const override ;
 
+#if defined(ENABLE_PACKET_TOA)
+  /** Start TOA timer, PPS capture (CAP0) and DIO1 packet-arrival capture (CAP1). Call once from setup. */
+  void toaBegin();
+  /** Last PPS rising-edge timestamp in timer ticks (80 MHz). */
+  uint64_t toaGetLastPpsTicks() const;
+  /** Last DIO1 (packet arrival) rising-edge capture in timer ticks; 0 if none yet. */
+  uint32_t toaGetLastDio1CaptureTicks() const;
+  uint32_t getLastToaDio1CaptureTicks() const override;
+#endif
+
 };

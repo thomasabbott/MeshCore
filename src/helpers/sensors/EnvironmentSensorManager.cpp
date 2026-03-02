@@ -557,7 +557,9 @@ void EnvironmentSensorManager::initBasicGPS() {
 
   // Try to detect if GPS is physically connected to determine if we should expose the setting
   _location->begin();
+#if !defined(GPS_HOT_START)
   _location->reset();
+#endif
 
   #ifndef PIN_GPS_EN
     MESH_DEBUG_PRINTLN("No GPS wake/reset pin found for this board. Continuing on...");
@@ -681,7 +683,9 @@ void EnvironmentSensorManager::start_gps() {
   #endif
 
   _location->begin();
+#if !defined(GPS_HOT_START)
   _location->reset();
+#endif
 
 #ifndef PIN_GPS_RESET
   MESH_DEBUG_PRINTLN("Start GPS is N/A on this board. Actual GPS state unchanged");

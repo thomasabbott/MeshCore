@@ -49,6 +49,8 @@ public:
   uint32_t getPacketsSent() const { return n_sent; }
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
 
+  uint32_t getLastToaCaptureTicks() const override;
+
   virtual float getLastRSSI() const override;
   virtual float getLastSNR() const override;
 
