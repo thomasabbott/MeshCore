@@ -94,3 +94,8 @@ void PicoWBoard::begin() {
 bool PicoWBoard::startOTAUpdate(const char* id, char reply[]) {
   return false;
 }
+
+void PicoWBoard::sleep(uint32_t secs) {
+  (void)secs;
+  __wfi();
+}

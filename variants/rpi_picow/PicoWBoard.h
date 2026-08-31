@@ -56,5 +56,8 @@ public:
     rp2040.reboot();
   }
 
+  uint32_t getIRQGpio() override { return P_LORA_DIO_1; }
+  void sleep(uint32_t secs) override;
+
   bool startOTAUpdate(const char* id, char reply[]) override;
 };
