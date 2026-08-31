@@ -75,7 +75,9 @@ void PicoWBoard::begin() {
 
   // for future use, sub-classes SHOULD call this from their begin()
   startup_reason = BD_STARTUP_NORMAL;
+#if defined(PIN_VBAT_READ)
   pinMode(PIN_VBAT_READ, INPUT);
+#endif
 #ifdef PIN_USER_BTN
   pinMode(PIN_USER_BTN, INPUT_PULLUP);
 #endif

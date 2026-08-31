@@ -10,9 +10,13 @@
 #define PIN_VBUS_DET  24
 #endif
 
-// built-ins
-#define  PIN_VBAT_READ    26
-#define  ADC_MULTIPLIER   (3.1 * 3.3 * 1000) // MT Uses 3.1
+// built-ins — Pico onboard VSYS/3 on ADC3 (GPIO29, not on 40-pin header)
+#ifndef PIN_VBAT_READ
+#define PIN_VBAT_READ    29
+#endif
+#ifndef ADC_MULTIPLIER
+#define ADC_MULTIPLIER   (3.0f * 3.3f * 1000)
+#endif
 #define  PIN_LED_BUILTIN  LED_BUILTIN
 
 class PicoWBoard : public mesh::MainBoard {
@@ -48,7 +52,7 @@ public:
   }
 
   const char* getManufacturerName() const override {
-    return "Pico W";
+    return "Pico";
   }
 
   void reboot() override {

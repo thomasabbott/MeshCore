@@ -418,6 +418,10 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _prefs->powersaving_enabled = 1;
       savePrefs();
       strcpy(reply, "on - After 2 minutes");
+#elif defined(RP2040_PLATFORM)
+      _prefs->powersaving_enabled = 1;
+      savePrefs();
+      strcpy(reply, "on - After 2 minutes");
 #elif defined(WITH_BRIDGE)
       strcpy(reply, "Bridge not supported");
 #else
