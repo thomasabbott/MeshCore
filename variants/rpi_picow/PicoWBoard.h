@@ -4,10 +4,20 @@
 #include <Arduino.h>
 #include <helpers/KeyValueStore.h>
 
-#ifdef RP2040_LOW_POWER
-// Pico board: SMPS PFM select (GPIO 23) and USB VBUS detect (GPIO 24)
-#define PIN_SMPS_MODE 23
+#if defined(RP2040_LOW_POWER) || defined(RP2040_BATTERY_PROTECT)
+// USB VBUS detect (GPIO 24), sampled once at boot
 #define PIN_VBUS_DET  24
+#endif
+#ifdef RP2040_LOW_POWER
+// Pico board: SMPS PFM select (GPIO 23)
+#define PIN_SMPS_MODE 23
+#endif
+
+#ifdef RP2040_BATTERY_PROTECT
+// LiFePO4-style thresholds on Pico VSYS (mV); 100 mV hysteresis
+#define BATTERY_PROTECT_LOW_MV    2850
+#define BATTERY_PROTECT_RESUME_MV 2950
+#define BATTERY_PROTECT_SLEEP_MS  5000
 #endif
 
 // built-ins — Pico onboard VSYS/3 on ADC3 (GPIO29, not on 40-pin header)
@@ -22,10 +32,21 @@
 class PicoWBoard : public mesh::MainBoard {
 protected:
   uint8_t startup_reason;
+#ifdef RP2040_BATTERY_PROTECT
+  bool on_battery_power;
+#endif
 
 public:
   void begin();
   uint8_t getStartupReason() const override { return startup_reason; }
+
+#ifdef RP2040_LOW_POWER
+  void applyPowerClocks(bool usb_connected);
+#endif
+#ifdef RP2040_BATTERY_PROTECT
+  bool isOnBatteryPower() const { return on_battery_power; }
+  void lowPowerSleep();
+#endif
 
   void attachDynamicPrefs(KeyValueStore* prefs) { }  // no-op
 
@@ -49,6 +70,10 @@ public:
     raw = raw / BATTERY_SAMPLES;
 
     return (ADC_MULTIPLIER * raw) / 4096;
+  }
+
+  float getMCUTemperature() override {
+    return analogReadTemp();
   }
 
   const char* getManufacturerName() const override {

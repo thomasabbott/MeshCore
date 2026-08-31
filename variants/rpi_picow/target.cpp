@@ -23,3 +23,30 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
 
+static void radio_shutdown_for_protect() {
+  radio.clearPacketReceivedAction();
+  radio_driver.powerOff();  // cold sleep — sleep(false), TCXO off
+}
+
+void battery_protect_loop_check() {
+#ifdef RP2040_BATTERY_PROTECT
+  if (!board.isOnBatteryPower()) {
+    return;
+  }
+  if (board.getBattMilliVolts() >= BATTERY_PROTECT_LOW_MV) {
+    return;
+  }
+
+  radio_shutdown_for_protect();
+
+  while (true) {
+    board.lowPowerSleep();
+    if (board.getBattMilliVolts() >= BATTERY_PROTECT_RESUME_MV) {
+      break;
+    }
+  }
+  board.reboot();
+#else
+  (void)0;
+#endif
+}

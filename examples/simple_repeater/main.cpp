@@ -204,4 +204,8 @@ void loop() {
     }
 #endif
   }
+
+#ifdef RP2040_BATTERY_PROTECT
+  battery_protect_loop_check();
+#endif
 }

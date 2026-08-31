@@ -15,4 +15,5 @@ extern SensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
+void battery_protect_loop_check();
 
