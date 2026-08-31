@@ -4,6 +4,12 @@
 #include <Arduino.h>
 #include <helpers/KeyValueStore.h>
 
+#ifdef RP2040_LOW_POWER
+// Pico board: SMPS PFM select (GPIO 23) and USB VBUS detect (GPIO 24)
+#define PIN_SMPS_MODE 23
+#define PIN_VBUS_DET  24
+#endif
+
 // built-ins
 #define  PIN_VBAT_READ    26
 #define  ADC_MULTIPLIER   (3.1 * 3.3 * 1000) // MT Uses 3.1
